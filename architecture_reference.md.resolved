@@ -1,0 +1,130 @@
+# ReturnGuard AI Architecture Reference
+
+## 1. Entity-Relationship (ER) Diagram
+
+```mermaid
+erDiagram
+    user ||--o{ Transaction : "makes"
+    user ||--o| UserFeature : "has"
+    user ||--o{ RiskScore : "receives"
+    
+    Transaction {
+        Int id PK
+        String user_id FK
+        String order_id UK
+        String item_id
+        Float item_price
+        DateTime purchase_date
+        DateTime return_date "nullable"
+        String return_reason "nullable"
+        Float refund_amount
+        String payment_method "nullable"
+        String receipt_id "nullable"
+    }
+
+    UserFeature {
+        String user_id PK
+        Int total_orders
+        Int total_returns
+        Float return_rate
+        Float user_avg_gap
+        Int duplicate_receipts
+        Float full_refund_ratio
+        Int high_value_returns
+        Int returns_last_7_days
+        Float avg_weekly_returns
+        Float f_return "Feature F1"
+        Float f_wardrobe "Feature F2"
+        Float f_timing "Feature F3"
+        Float f_receipt "Feature F4"
+        Float f_refund "Feature F5"
+        Float f_value "Feature F6"
+        Float f_burst "Feature F7"
+        DateTime last_updated
+    }
+
+    RiskScore {
+        Int id PK
+        String user_id FK
+        String order_id "nullable"
+        Float score
+        String level "Normal | Moderate | Extreme"
+        String status "Pending | Handled"
+        String explanation
+        DateTime created_at
+    }
+
+    PlatformBaseline {
+        Int id PK "Always 1"
+        Float platform_avg_return_rate
+        Float platform_avg_gap
+        Float platform_std_gap
+        Float high_value_threshold
+        DateTime last_updated
+    }
+```
+
+---
+
+## 2. Database Schema (Prisma / SQL)
+
+The backend natively uses `Prisma` connected to a SQLite database. Here is the relational schema breakdown:
+
+### Table: `Transaction`
+Stores Raw CSV order/return telemetry.
+*   `id` (Int, Auto-Increment, **Primary Key**)
+*   `user_id` (String, Indexed)
+*   `order_id` (String, **Unique**)
+*   `item_id` (String, Nullable)
+*   `purchase_date` (DateTime)
+*   `return_date` (DateTime, Nullable)
+*   `return_reason` (String, Nullable)
+*   `item_price` (Float)
+*   `refund_amount` (Float, Default: 0)
+*   `payment_method` (String, Nullable)
+*   `receipt_id` (String, Nullable)
+
+### Table: [UserFeature](file:///Users/brak/Desktop/hackathn%20copy%202/server/src/services/features.js#63-165)
+Houses the algorithmic calculation outputs per user.
+*   `user_id` (String, **Primary Key**)
+*   `total_orders`, `total_returns`, `return_rate` (Aggregates)
+*   `user_avg_gap`, `duplicate_receipts`, `full_refund_ratio`, `high_value_returns` (Metadata)
+*   `returns_last_7_days`, `avg_weekly_returns` (Time-series info)
+*   `f_return`, `f_wardrobe`, `f_timing`, `f_receipt`,  `f_refund`, `f_value`, `f_burst` (F1-F7 ML Scaled Tensors in `[0,1]`)
+*   `last_updated` (DateTime)
+
+### Table: [RiskScore](file:///Users/brak/Desktop/hackathn%20copy%202/server/src/services/scoring.js#3-109)
+Contains the generated fraud flags per transaction/user execution event.
+*   `id` (Int, Auto-Increment, **Primary Key**)
+*   `user_id` (String, FK, Indexed)
+*   `order_id` (String, FK, Indexed)
+*   `score` (Float, `0-100` Scale)
+*   `level` (String, Enum: `Normal`, `Moderate`, `Extreme`)
+*   `status` (String, Enum: `Pending`, `Handled`)
+*   `explanation` (String, Generated LLM string)
+*   `created_at` (DateTime)
+
+### Table: [PlatformBaseline](file:///Users/brak/Desktop/hackathn%20copy%202/server/src/services/features.js#1-62)
+A Singleton table storing ecosystem-level statistical benchmarks calculated recursively across all users.
+*   `id` (Int, **Primary Key = 1**)
+*   `platform_avg_return_rate` (Float, dynamically buffered safely)
+*   `platform_avg_gap` (Float)
+*   `platform_std_gap` (Float)
+*   `high_value_threshold` (Float)
+
+---
+
+## 3. API Structure (Node.js/Express REST)
+
+All routes are prefixed with `/api`.
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| **POST** | `/api/transactions/upload` | **(Ingestion)** `multipart/form-data` upload accepting the CSV. Clears database rows, dynamically maps legacy (`order_value`) & new headers, triggers UserFeature calculations, stores RiskScores, and validates fraud. |
+| **GET** | `/api/transactions` | **(Listing)** Returns a paginated JSON block of the last `100` raw transactions for rendering table history. |
+| **GET** | `/api/metrics/summary` | **(Analytics)** Returns high level KPIs: `total_transactions`, `return_rate`, `average_risk_score`, and `high_risk_count`. Rendered directly into the Dashboard stat cards. |
+| **GET** | `/api/fraud/alerts` | **(Alert Engine)** Retrieves the top `20` RiskScores dynamically sorted by `{ score: 'desc' }` that have `status: 'Pending'`. These map visually to the red/yellow alerts sidebar. |
+| **GET** | `/api/risk/patterns` | **(Intelligence)** Aggregates and counts specific threat `explanation` strings attached to Moderate/Extreme alerts to show systemic attack vectors in the bottom-right Dashboard card. |
+| **GET** | `/api/users/:user_id/risk` | **(Detail)** Requests a real-time recalculation of a specific user's [UserFeature](file:///Users/brak/Desktop/hackathn%20copy%202/server/src/services/features.js#63-165) F1-F7 profile and returns their singular risk assessment. |
+| **POST** | `/api/transactions/:order_id/approve` | **(Resolution)** Manual Analyst Override. Flips a specific RiskScore `status` from `Pending` -> `Handled` and wipes the severity to `Normal`. |
+| **POST** | `/api/users/:user_id/blacklist` | **(Resolution)** Heavy Override. Sweeps all RiskScores for the `userId`, forcing them all to `Extreme` severity, locking down the account. |
