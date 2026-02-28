@@ -185,7 +185,7 @@ async function handleUpload(file) {
 
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({ detail: 'Unknown error' }));
-            const detail = errorData.detail || `Upload failed (${response.status})`;
+            const detail = errorData.error || errorData.detail || `Upload failed (${response.status})`;
             console.error('Upload Error Response:', response.status, detail);
             throw new Error(detail);
         }
