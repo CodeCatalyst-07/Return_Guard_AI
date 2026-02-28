@@ -1,0 +1,73 @@
+datasource db {
+  provider = "sqlite"
+  url      = "file:./fraud_detection.db"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model Transaction {
+  id                Int       @id @default(autoincrement())
+  user_id           String
+  order_id          String    @unique
+  item_id           String?
+  purchase_date     DateTime
+  return_date       DateTime?
+  return_reason     String?
+  item_price        Float
+  refund_amount     Float     @default(0.0)
+  payment_method    String?
+  receipt_id        String?
+
+  @@index([user_id])
+  @@index([order_id])
+}
+
+model UserFeature {
+  user_id                 String   @id
+  total_orders            Int      @default(0)
+  total_returns           Int      @default(0)
+  return_rate             Float    @default(0.0)
+  user_avg_gap            Float    @default(0.0)
+  duplicate_receipts      Int      @default(0)
+  full_refund_ratio       Float    @default(0.0)
+  high_value_returns      Int      @default(0)
+  returns_last_7_days     Int      @default(0)
+  avg_weekly_returns      Float    @default(0.0)
+  
+  f_return                Float    @default(0.0)
+  f_wardrobe              Float    @default(0.0)
+  f_timing                Float    @default(0.0)
+  f_receipt               Float    @default(0.0)
+  f_refund                Float    @default(0.0)
+  f_value                 Float    @default(0.0)
+  f_burst                 Float    @default(0.0)
+
+  last_updated            DateTime @default(now())
+
+  @@index([user_id])
+}
+
+model RiskScore {
+  id          Int      @id @default(autoincrement())
+  user_id     String
+  order_id    String?
+  score       Float
+  level       String
+  status      String   @default("Pending")
+  explanation String?
+  created_at  DateTime @default(now())
+
+  @@index([user_id])
+  @@index([order_id])
+}
+
+model PlatformBaseline {
+  id                        Int      @id @default(1)
+  platform_avg_return_rate  Float    @default(0.0)
+  platform_avg_gap          Float    @default(0.0)
+  platform_std_gap          Float    @default(0.0)
+  high_value_threshold      Float    @default(0.0)
+  last_updated              DateTime @default(now())
+}

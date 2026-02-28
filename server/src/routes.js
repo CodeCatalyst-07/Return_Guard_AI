@@ -9,7 +9,7 @@ const router = express.Router();
 const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
-router.post('/transactions/upload', upload.single('file'), async (req, res) => {
+router.post('/analyze-transactions', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ detail: 'No file uploaded' });
@@ -18,28 +18,88 @@ router.post('/transactions/upload', upload.single('file'), async (req, res) => {
         // Process the CSV
         const { count, df } = await processCSVUpload(prisma, req.file.buffer);
 
-        // Recompute features and scores
-        const uniqueUsers = [...new Set(df.map(row => String(row.user_id)))];
-        for (const userId of uniqueUsers) {
-            // grab the latest orderId for this user if needed
-            const userRows = df.filter(row => String(row.user_id) === userId);
-            const latestOrderId = String(userRows[userRows.length - 1].order_id);
-
-            await computeUserFeatures(prisma, userId);
-            await calculateRiskScore(prisma, userId, latestOrderId);
-        }
-
-        const highRiskCount = await prisma.riskScore.count({
-            where: { level: { in: ['Extreme', 'Moderate'] } }
+        // 1. Group and Sort Transactions
+        const userGroups = {};
+        df.forEach(row => {
+            const uid = String(row.user_id);
+            if (!userGroups[uid]) userGroups[uid] = [];
+            userGroups[uid].push(row);
         });
 
-        if (highRiskCount === 0) {
-            throw new Error("Fraud logic still not activating — investigate feature calculation.");
+        const currentBatchScores = [];
+        let threatsDetected = 0;
+        const totalRecords = df.length;
+
+        // 2. Process each user's transaction sequence
+        const { computeUserStats, calculateRisk } = require('./services/scoring');
+        const blacklist = []; // Placeholder for future blacklist table integration
+
+        for (const userId in userGroups) {
+            // Sort by timestamp ascending
+            const userTx = userGroups[userId].sort((a, b) =>
+                new Date(a.purchase_date) - new Date(b.purchase_date)
+            );
+
+            for (let i = 0; i < userTx.length; i++) {
+                const tx = userTx[i];
+
+                // Compute userStats dynamically from CSV history
+                const userStats = computeUserStats(userTx, i);
+
+                // Calculate Risk Score
+                const risk = calculateRisk(tx, userStats, blacklist);
+
+                // 4. Set threat status
+                const level = risk >= 71 ? "Extreme" : (risk >= 31 ? "Moderate" : "Normal");
+
+                // Log for debugging
+                console.log(`[RISK ANALYSIS] Order: ${tx.order_id} | User: ${userId} | Score: ${risk} | Level: ${level}`);
+
+                const scoreData = {
+                    user_id: userId,
+                    order_id: String(tx.order_id),
+                    score: risk,
+                    level: level,
+                    status: "Pending",
+                    explanation: risk >= 71 ? "Dynamic Batch: High risk detected" : (risk >= 31 ? "Moderate risk detected" : "Analyzed")
+                };
+
+                // PERSIST TO DATABASE
+                const existing = await prisma.riskScore.findFirst({ where: { order_id: String(tx.order_id) } });
+                if (existing) {
+                    await prisma.riskScore.update({ where: { id: existing.id }, data: scoreData });
+                } else {
+                    await prisma.riskScore.create({ data: scoreData });
+                }
+
+                currentBatchScores.push({ ...scoreData });
+
+                // 5. Increment Threats
+                if (risk >= 71) threatsDetected++;
+            }
         }
 
-        res.json({ message: `Successfully uploaded ${count} transactions and updated risk scores` });
+        // 6. Final aggregation
+        const statsAvg = currentBatchScores.reduce((sum, s) => sum + s.score, 0) / Math.max(1, totalRecords);
+        let low = 0, medium = 0, high = 0;
+        currentBatchScores.forEach(s => {
+            if (s.score >= 71) high++;
+            else if (s.score >= 31) medium++;
+            else low++;
+        });
+
+        const responsePayload = {
+            totalRecords,
+            threatsDetected,
+            averageRiskScore: statsAvg,
+            flaggedTransactions: currentBatchScores.filter(s => s.score >= 71),
+            distribution: { low, medium, high }
+        };
+
+        console.log("CONSOLIDATED BATCH RESULT:", responsePayload);
+        res.json(responsePayload);
     } catch (error) {
-        console.error(error);
+        console.error("ANALYSIS ERROR:", error);
         res.status(500).json({ detail: `Internal processing error: ${error.message}` });
     }
 });

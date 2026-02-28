@@ -1,0 +1,12 @@
+[Amount anomaly]
+If amount > 3x user average -> +30
+If amount > fixed threshold (e.g., 5000) -> +25
+
+[High frequency]
+>5 transactions in 1 hour -> +20
+
+[Refund abuse]
+>3 refunds in 7 days -> +25
+
+[Blacklist match]
+Email or device flagged -> +40
