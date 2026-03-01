@@ -1,1 +1,6 @@
-{}
+{
+    "buildCommand": "npm run vercel-build",
+    "outputDirectory": "frontend/dist",
+    "installCommand": "echo skip",
+    "framework": null
+}
