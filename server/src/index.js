@@ -8,7 +8,14 @@ const app = express();
 const port = process.env.PORT || 5001;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+    origin: [
+        'https://return-guard-ai-j3n4.vercel.app',
+        'http://localhost:5173',
+        'http://localhost:5175'
+    ],
+    credentials: true
+}));
 app.use(express.json());
 
 // API Mounting - ensure the router is mounted on /api

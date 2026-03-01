@@ -308,7 +308,11 @@
  * Backend Connected Version
  */
 
-const API_URL = "http://localhost:5001/api";
+// In dev, Vite proxies /api → localhost:5001.
+// In production (Vercel), call the Render backend directly.
+const API_URL = (location.hostname === 'localhost' || location.hostname === '127.0.0.1')
+    ? '/api'
+    : 'https://return-guard-ai.onrender.com/api';
 
 let initialized = false;
 document.addEventListener('DOMContentLoaded', () => {
