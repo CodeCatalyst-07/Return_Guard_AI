@@ -26,6 +26,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from fastapi import File, UploadFile
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    return {"filename": file.filename}
+
 @app.get("/")
 def read_root():
     return {"message": "Return Guard AI backend is running 🚀"}
