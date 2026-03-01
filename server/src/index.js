@@ -9,11 +9,18 @@ const port = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors({
-    origin: [
-        'https://return-guard-ai-j3n4.vercel.app',
-        'http://localhost:5173',
-        'http://localhost:5175'
-    ],
+    origin: (origin, callback) => {
+        const allowed = [
+            'http://localhost:5173',
+            'http://localhost:5175'
+        ];
+        // Allow any *.vercel.app subdomain
+        if (!origin || allowed.includes(origin) || /\.vercel\.app$/.test(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('CORS: origin not allowed: ' + origin));
+        }
+    },
     credentials: true
 }));
 app.use(express.json());

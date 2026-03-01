@@ -402,7 +402,7 @@ async function handleUpload(file) {
     formData.append('file', file);
 
     try {
-        const response = await fetch('/api/upload', {
+        const response = await fetch(`${API_URL}/upload`, {
             method: 'POST',
             body: formData
         });
@@ -429,7 +429,7 @@ async function pollProgress(uploadId) {
 
     const interval = setInterval(async () => {
         try {
-            const res = await fetch(`/api/progress/${uploadId}`);
+            const res = await fetch(`${API_URL}/progress/${uploadId}`);
             if (!res.ok) return;
             const data = await res.json();
 
