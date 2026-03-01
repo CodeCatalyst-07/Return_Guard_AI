@@ -382,26 +382,27 @@ async function handleUpload(file) {
     progressDiv.style.display = 'block';
     bar.style.width = '0%';
     progressVal.textContent = '0%';
-    status.textContent = 'Uploading dataset...';
+    status.textContent = 'Uploading and analyzing dataset...';
+    bar.style.background = 'var(--primary)';
 
     const formData = new FormData();
     formData.append('file', file);
 
     try {
-        const response = await fetch(`${API_URL}/upload`, {
+        const response = await fetch('/api/upload', {
             method: 'POST',
             body: formData
         });
 
-        if (!response.ok) throw new Error("Connection failed");
+        clearInterval(progressInterval);
 
-        const data = await response.json();
+        if (!response.ok) {
+            const errBody = await response.json().catch(() => ({}));
+            throw new Error(errBody.detail || "Connection failed");
+        }
 
-        bar.style.width = '100%';
-        progressVal.textContent = '100%';
-        status.textContent = "Upload complete ✅";
-
-        console.log("Upload response:", data);
+        const { uploadId } = await response.json();
+        pollProgress(uploadId);
 
     } catch (err) {
         status.textContent = "Error: " + err.message;
@@ -409,9 +410,56 @@ async function handleUpload(file) {
     }
 }
 
-/* =========================
-   DATA FETCHING
-========================= */
+async function pollProgress(uploadId) {
+    const bar = document.getElementById('upload-bar');
+    const status = document.getElementById('upload-status');
+    const resultsDiv = document.getElementById('import-results');
+    const progressVal = document.getElementById('progress-val');
+
+    const interval = setInterval(async () => {
+        try {
+            const res = await fetch(`/api/progress/${uploadId}`);
+            if (!res.ok) return;
+            const data = await res.json();
+
+            bar.style.width = `${data.progress}%`;
+            progressVal.textContent = `${data.progress}%`;
+            status.textContent = `Analyzing risk vectors: ${data.processed || 0} / ${data.total || 0}`;
+
+            if (data.status === 'completed') {
+                clearInterval(interval);
+                bar.style.width = '100%';
+                status.textContent = 'Analysis complete!';
+                state.currentAnalysisResult = data.result;
+
+                document.getElementById('result-count').textContent = data.result.total_records;
+                document.getElementById('result-threats').textContent = data.result.threats_detected;
+                resultsDiv.style.display = 'block';
+
+                await fetchData(); // Refresh all views
+            } else if (data.status === 'error') {
+                clearInterval(interval);
+                status.textContent = 'Error: ' + data.error;
+            }
+        } catch (e) {
+            console.error(e);
+        }
+    }, 800);
+}
+
+function animateNumber(id, start, end, duration, suffix = '') {
+    const el = document.querySelector(`#${id} .kpi-value`);
+    if (!el) return;
+    let startTimestamp = null;
+    const step = (timestamp) => {
+        if (!startTimestamp) startTimestamp = timestamp;
+        const progress = Math.min((timestamp - startTimestamp) / duration, 1);
+        const val = progress * (end - start) + start;
+        el.textContent = (id.includes('prob') ? val.toFixed(1) : Math.floor(val).toLocaleString()) + suffix;
+        if (progress < 1) window.requestAnimationFrame(step);
+    };
+    window.requestAnimationFrame(step);
+}
 
 async function fetchData() {
     try {

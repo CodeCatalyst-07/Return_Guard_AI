@@ -14,16 +14,6 @@ app.use(express.json());
 // API Mounting - ensure the router is mounted on /api
 app.use('/api', routes);
 
-// Static Client Serving (for local/monolithic mode)
-// Vite build output goes to frontend/dist/
-const distPath = path.join(__dirname, '../../frontend/dist');
-app.use(express.static(distPath));
-
-// Root heartbeat for deployment verification
-app.get('/api/heartbeat', (req, res) => {
-    res.json({ status: "alive", nucleus: "operational", timestamp: new Date() });
-});
-
 // Final Fallback for SPA (if user hits refresh on /dashboard)
 app.use((req, res) => {
     // If it's an API request that wasn't caught by internal routers
