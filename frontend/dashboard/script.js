@@ -308,7 +308,7 @@
  * Backend Connected Version
  */
 
-const API_URL = "https://return-guard-ai.onrender.com";
+const API_URL = "http://localhost:5001/api";
 
 let initialized = false;
 document.addEventListener('DOMContentLoaded', () => {
@@ -367,6 +367,15 @@ function setupEventListeners() {
             if (file) handleUpload(file);
         });
     }
+
+    // "View New Alerts" button — navigate to dashboard view after upload
+    const viewAlertsBtn = document.getElementById('view-alerts-btn');
+    if (viewAlertsBtn) {
+        viewAlertsBtn.addEventListener('click', () => {
+            const dashboardNav = document.querySelector('.nav-item[data-view="dashboard"]');
+            if (dashboardNav) dashboardNav.click();
+        });
+    }
 }
 
 /* =========================
@@ -394,11 +403,9 @@ async function handleUpload(file) {
             body: formData
         });
 
-        clearInterval(progressInterval);
-
         if (!response.ok) {
             const errBody = await response.json().catch(() => ({}));
-            throw new Error(errBody.detail || "Connection failed");
+            throw new Error(errBody.detail || errBody.error || "Connection failed");
         }
 
         const { uploadId } = await response.json();
@@ -430,13 +437,17 @@ async function pollProgress(uploadId) {
                 clearInterval(interval);
                 bar.style.width = '100%';
                 status.textContent = 'Analysis complete!';
+
+                // Use upload result as source of truth for KPIs and charts
                 state.currentAnalysisResult = data.result;
 
                 document.getElementById('result-count').textContent = data.result.total_records;
                 document.getElementById('result-threats').textContent = data.result.threats_detected;
                 resultsDiv.style.display = 'block';
 
-                await fetchData(); // Refresh all views
+                // Refresh table rows from DB but keep upload result for KPIs
+                await fetchData(true);
+
             } else if (data.status === 'error') {
                 clearInterval(interval);
                 status.textContent = 'Error: ' + data.error;
@@ -461,12 +472,9 @@ function animateNumber(id, start, end, duration, suffix = '') {
     window.requestAnimationFrame(step);
 }
 
-async function fetchData() {
+// preserveResult = true when called after upload so KPIs stay on the upload stats
+async function fetchData(preserveResult = false) {
     try {
-
-        // These routes do NOT exist yet in your backend
-        // So they are wrapped in try/catch safely
-
         const alerts = await safeFetch(`${API_URL}/fraud/alerts`);
         const trans = await safeFetch(`${API_URL}/transactions`);
         const patterns = await safeFetch(`${API_URL}/risk/patterns`);
@@ -481,10 +489,24 @@ async function fetchData() {
             level: a.level?.toLowerCase()
         })) : [];
 
-        syncUI();
+        // Only recompute from DB data on initial load (not after an upload)
+        if (!preserveResult) {
+            const highItems = state.returns.filter(r => r.riskScore >= 60);
+            state.currentAnalysisResult = {
+                total_records: state.transactions.length,
+                threats_detected: highItems.length,
+                high_risk_count: state.returns.filter(r => ['high', 'extreme'].includes(r.level)).length,
+                medium_risk_count: state.returns.filter(r => ['moderate', 'medium'].includes(r.level)).length,
+                low_risk_count: state.returns.filter(r => ['low', 'normal'].includes(r.level)).length,
+                average_risk_score: state.returns.length
+                    ? state.returns.reduce((s, r) => s + r.riskScore, 0) / state.returns.length
+                    : 0
+            };
+        }
 
+        syncUI();
     } catch (e) {
-        console.log("Backend routes not ready yet.");
+        console.log('Backend routes not ready yet.', e);
     }
 }
 
@@ -503,13 +525,191 @@ async function safeFetch(url) {
 ========================= */
 
 function syncUI() {
+    const data = state.currentAnalysisResult || {};
+
+    // Always derive KPIs straight from state.returns (source of truth from API)
+    const totalReturns = state.transactions.length || data.total_records || 0;
+    const highRisk = state.returns.filter(r => ['high', 'extreme'].includes(r.level)).length;
+    const flagged = state.returns.filter(r => r.riskScore >= 60).length;
+    const avgRisk = state.returns.length
+        ? state.returns.reduce((s, r) => s + r.riskScore, 0) / state.returns.length
+        : 0;
+
+    animateNumber('kpi-total-returns', state.kpis.total, totalReturns, 1000);
+    animateNumber('kpi-high-risk', state.kpis.threats, highRisk, 1000);
+    animateNumber('kpi-fraud-prob', state.kpis.avgRisk, avgRisk, 1000, '%');
+    animateNumber('kpi-flagged-users', state.kpis.flagged, flagged, 1000);
+
+    state.kpis = { total: totalReturns, threats: highRisk, avgRisk, flagged };
+
     renderTable();
+    renderCharts(data);
+    renderReturnsView();
+    renderRiskView();
+}
+
+function getRiskColor(level) {
+    if (!level) return '#64748b';
+    const l = level.toLowerCase();
+    if (l === 'extreme' || l === 'high') return '#ef4444';
+    if (l === 'moderate' || l === 'medium') return '#f59e0b';
+    return '#22c55e';
 }
 
 function renderTable() {
     const tbody = document.getElementById('fraud-table-body');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:40px;">Backend Connected ✅</td></tr>';
+
+    const filtered = state.returns.filter(r =>
+        state.filterLevel === 'all' || r.level === state.filterLevel
+    );
+
+    if (filtered.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">
+            ${state.returns.length === 0 ? 'No data yet — upload a CSV to get started.' : 'No matches for current filter.'}
+        </td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = filtered.map(item => `
+        <tr>
+            <td><span class="order-id">${item.id}</span></td>
+            <td>${item.userId}</td>
+            <td class="reason-cell" style="max-width:280px;font-size:0.8rem;color:var(--text-muted);">${item.reason || '—'}</td>
+            <td>
+                <div style="display:flex;align-items:center;gap:8px;">
+                    <div class="risk-bar-container" style="flex:1;height:6px;">
+                        <div class="risk-bar" style="width:${Math.min(item.riskScore, 100)}%;background:${getRiskColor(item.level)};"></div>
+                    </div>
+                    <span style="font-size:0.8rem;font-weight:600;">${Math.round(item.riskScore)}%</span>
+                </div>
+            </td>
+            <td>
+                <span class="risk-badge ${item.level}" style="
+                    padding:3px 10px;border-radius:99px;font-size:0.7rem;font-weight:700;
+                    background:${getRiskColor(item.level)}22;color:${getRiskColor(item.level)};
+                    text-transform:uppercase;letter-spacing:0.05em;">
+                    ${item.level}
+                </span>
+            </td>
+            <td><button class="filter-btn" style="padding:4px 12px;font-size:0.75rem;" onclick="openDetailModalById('${item.id}')">View</button></td>
+        </tr>
+    `).join('');
 }
 
-window.openDetailModalById = () => {};
+function renderCharts(dist) {
+    // Bar chart
+    const barCanvas = document.getElementById('bar-chart-canvas');
+    if (barCanvas && dist) {
+        const ctx = barCanvas.getContext('2d');
+        const values = [dist.low_risk_count || 0, dist.medium_risk_count || 0, dist.high_risk_count || 0];
+        const labels = ['Safe', 'Medium', 'High'];
+        const colors = ['#3b82f6', '#f59e0b', '#ef4444'];
+        const max = Math.max(...values, 1);
+        const w = barCanvas.width = barCanvas.parentElement.clientWidth || 400;
+        const h = barCanvas.height = 160;
+        ctx.clearRect(0, 0, w, h);
+        const barW = (w - 80) / 3 - 16;
+        values.forEach((v, i) => {
+            const barH = (v / max) * (h - 50);
+            const x = 40 + i * ((w - 80) / 3);
+            ctx.fillStyle = colors[i];
+            ctx.beginPath();
+            ctx.roundRect(x, h - barH - 20, barW, barH, 4);
+            ctx.fill();
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '12px Inter, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(labels[i], x + barW / 2, h - 4);
+            ctx.fillStyle = '#fff';
+            ctx.fillText(v, x + barW / 2, h - barH - 25);
+        });
+    }
+
+    // Donut chart
+    const donutCanvas = document.getElementById('donut-chart-canvas');
+    if (donutCanvas && dist) {
+        const ctx = donutCanvas.getContext('2d');
+        const total = (dist.low_risk_count || 0) + (dist.medium_risk_count || 0) + (dist.high_risk_count || 0) || 1;
+        const slices = [
+            { value: dist.low_risk_count || 0, color: '#3b82f6' },
+            { value: dist.medium_risk_count || 0, color: '#f59e0b' },
+            { value: dist.high_risk_count || 0, color: '#ef4444' },
+        ];
+        const size = 140;
+        donutCanvas.width = donutCanvas.height = size;
+        ctx.clearRect(0, 0, size, size);
+        let startAngle = -Math.PI / 2;
+        slices.forEach(s => {
+            const sweep = (s.value / total) * 2 * Math.PI;
+            ctx.beginPath();
+            ctx.moveTo(size / 2, size / 2);
+            ctx.arc(size / 2, size / 2, size / 2 - 4, startAngle, startAngle + sweep);
+            ctx.closePath();
+            ctx.fillStyle = s.color;
+            ctx.fill();
+            startAngle += sweep;
+        });
+        // Donut hole
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2 - 28, 0, 2 * Math.PI);
+        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--card-bg') || '#1a2236';
+        ctx.fill();
+    }
+}
+
+function renderReturnsView() {
+    const container = document.getElementById('returns-view');
+    if (!container) return;
+    const card = container.querySelector('.glass-card');
+    if (!card) return;
+    if (state.transactions.length === 0) return;
+    card.innerHTML = `
+        <div class="table-responsive">
+            <table>
+                <thead><tr><th>ORDER</th><th>USER</th><th>DATE</th><th>PRICE</th><th>STATUS</th></tr></thead>
+                <tbody>${state.transactions.slice(0, 50).map(t => `
+                    <tr>
+                        <td><span class="order-id">${t.order_id}</span></td>
+                        <td>${t.user_id}</td>
+                        <td>${new Date(t.purchase_date).toLocaleDateString()}</td>
+                        <td>$${Number(t.item_price || 0).toFixed(2)}</td>
+                        <td><span style="color:${t.return_date ? '#f59e0b' : '#22c55e'}">${t.return_date ? 'Returned' : 'Kept'}</span></td>
+                    </tr>`).join('')}
+                </tbody>
+            </table>
+        </div>`;
+}
+
+function renderRiskView() {
+    const container = document.getElementById('risk-view');
+    if (!container) return;
+    const card = container.querySelector('.glass-card');
+    if (!card) return;
+    if (state.patterns.length === 0) return;
+    card.innerHTML = `<div class="risk-matrix" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:16px;padding:24px;">
+        ${state.patterns.map(p => `
+            <div class="glass-card" style="padding:20px;">
+                <h4 style="margin-bottom:8px;">${p.pattern}</h4>
+                <p style="color:var(--text-muted);font-size:0.85rem;">Occurrences: <strong>${p.count}</strong></p>
+                <span style="font-size:0.75rem;color:${p.threat_level === 'High' ? '#ef4444' : '#f59e0b'};font-weight:700;">${p.threat_level} Threat</span>
+            </div>`).join('')}
+    </div>`;
+}
+
+window.openDetailModalById = (id) => {
+    const item = state.returns.find(r => r.id === id);
+    if (!item) return;
+    const modal = document.getElementById('fraud-modal');
+    const content = document.getElementById('modal-details');
+    content.innerHTML = `
+        <h3 style="margin-bottom:12px;">Order: ${item.id}</h3>
+        <p style="color:var(--text-muted);margin-bottom:8px;">User: <strong>${item.userId}</strong></p>
+        <p style="font-size:0.85rem;margin-bottom:16px;line-height:1.6;">${item.reason || 'No explanation available.'}</p>
+        <div style="display:flex;align-items:center;gap:12px;">
+            <span style="font-size:1.4rem;font-weight:700;color:${getRiskColor(item.level)};">${Math.round(item.riskScore)}%</span>
+            <span class="risk-badge" style="padding:4px 14px;border-radius:99px;background:${getRiskColor(item.level)}22;color:${getRiskColor(item.level)};font-weight:700;text-transform:uppercase;">${item.level}</span>
+        </div>`;
+    modal.classList.add('active');
+};
+

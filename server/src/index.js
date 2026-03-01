@@ -5,7 +5,7 @@ const fs = require('fs');
 const routes = require('./routes');
 
 const app = express();
-const port = process.env.PORT || 8000;
+const port = process.env.PORT || 5001;
 
 // Middleware
 app.use(cors());
@@ -13,6 +13,8 @@ app.use(express.json());
 
 // API Mounting - ensure the router is mounted on /api
 app.use('/api', routes);
+
+const distPath = path.join(__dirname, '../../frontend/dist');
 
 // Final Fallback for SPA (if user hits refresh on /dashboard)
 app.use((req, res) => {
@@ -28,17 +30,17 @@ app.use((req, res) => {
     }
 });
 
-// Only listen if not handled by Vercel
-if (!process.env.VERCEL) {
-    app.listen(port, () => {
-        console.log(`
-        =========================================
-        ReturnGuardAI | Backend Nucleus
-        STATUS: Operational
-        PORT: ${port}
-        =========================================
-        `);
-    });
-}
+app.listen(port, () => {
+    console.log(`
+    =========================================
+    ReturnGuardAI | Backend Nucleus
+    STATUS: Operational
+    PORT: ${port}
+    =========================================
+    `);
+});
+
+// Patch for Node v25 early exit issue
+setInterval(() => { }, 1000 * 60 * 60);
 
 module.exports = app;

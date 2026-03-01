@@ -20,7 +20,7 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        https://return-guard-ai-j3n4.vercel.app
+        "https://return-guard-ai-j3n4.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
