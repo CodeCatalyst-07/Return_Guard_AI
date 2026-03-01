@@ -4,13 +4,13 @@
 
 ### AI-Powered Return Fraud Detection for Indian E-Commerce
 
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-return--guard--ai.vercel.app-blue?style=for-the-badge&logo=vercel)](https://return-guard-ai.vercel.app/)
+<!-- [![Live Demo](https://img.shields.io/badge/Live%20Demo-return--guard--ai.vercel.app-blue?style=for-the-badge&logo=vercel)](https://return-guard-ai.vercel.app/)
 [![Demo Video](https://img.shields.io/badge/Demo%20Video-Watch%20Now-red?style=for-the-badge&logo=youtube)](YOUR_DEMO_VIDEO_LINK)
 [![Presentation](https://img.shields.io/badge/Presentation-View%20Slides-orange?style=for-the-badge&logo=googleslides)](YOUR_PRESENTATION_LINK)
 [![GitHub](https://img.shields.io/badge/GitHub-CodeCatalyst--07-black?style=for-the-badge&logo=github)](https://github.com/CodeCatalyst-07/Return_Guard_AI)
 [![Python](https://img.shields.io/badge/Python-3.9+-yellow?style=for-the-badge&logo=python)](https://python.org)
 [![JavaScript](https://img.shields.io/badge/JavaScript-ES6+-F7DF1E?style=for-the-badge&logo=javascript)](https://developer.mozilla.org/en-US/docs/Web/JavaScript)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript)](https://typescriptlang.org)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-3178C6?style=for-the-badge&logo=typescript)](https://typescriptlang.org) -->
 
 > An intelligent, real-time fraud surveillance system that detects and prevents return abuse — including wardrobing, serial returners, and fake receipts — tailored for Indian e-commerce platforms.
 
@@ -75,7 +75,7 @@ The application runs in Demo Mode — generate synthetic transaction data and ex
 
 ## Demo Video
 
-**[Watch the Demo Video](YOUR_DEMO_VIDEO_LINK)**
+**[Watch the Demo Video](https://drive.google.com/file/d/1sfQ5CJpQwiaCQgcSxu7oG-9mBD1MVrO5/view)**
 
 A full walkthrough of ReturnGuard AI — from uploading a transaction CSV to real-time fraud scoring, risk alerts, and dashboard analytics.
 
@@ -85,7 +85,7 @@ A full walkthrough of ReturnGuard AI — from uploading a transaction CSV to rea
 
 ## Presentation
 
-**[View the Presentation Slides](YOUR_PRESENTATION_LINK)**
+**[View the Presentation Slides](https://www.canva.com/design/DAHCprv-BwM/9tm8CZvqWbzDzH-X6H38Ew/view?utm_content=DAHCprv-BwM&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hb086ee5455)**
 
 Our hackathon pitch deck covering the problem statement, solution architecture, ML approach, market opportunity, and live demo highlights.
 
@@ -136,22 +136,12 @@ Upload transaction datasets for batch risk scoring. Supports drag-and-drop file 
 
 | Layer | Technology |
 |---|---|
-| **Frontend** | HTML5, CSS3, JavaScript (ES6+), TypeScript |
+| **Frontend** | HTML5, CSS3, JavaScript (ES6+) |
 | **Backend** | Python (FastAPI / Flask) |
 | **ML / AI** | Python ML libraries (scikit-learn / custom heuristics) |
-| **API Layer** | RESTful API (`/api` directory) |
 | **Deployment** | Vercel (Frontend), Python server (Backend) |
 | **Package Management** | npm (Node.js), pip (Python) |
 
-**Language Breakdown**
-
-| Language | Share |
-|---|---|
-| JavaScript | 52.0% |
-| HTML | 19.0% |
-| CSS | 14.2% |
-| TypeScript | 13.9% |
-| Python | 0.9% |
 
 ---
 
@@ -370,7 +360,7 @@ This project was built for a hackathon focused on solving real-world problems in
 
 ## Team
 
-**CodeCatalyst-07**
+**CodeCatalyst-07 + codebrak07 + suryaadypu**
 
 Built for the hackathon community.
 
