@@ -3,12 +3,8 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
-
     "build": "npm run vercel-build",
-    "vercel-build": "npm install && cd frontend && npm install && npm run build && cd ../frontend/backend && npm install && npx prisma generate",
-
-    "build": "cd frontend && npm install && npm run build",
-
+    "vercel-build": "npm install && cd frontend && npm install && npm run build && cd .. && mkdir -p dist && cp -rn frontend/dist/* dist/ && cd frontend/backend && npm install && npx prisma generate",
     "preview": "cd frontend && npm run preview",
     "backend": "cd frontend/backend && npm run dev",
     "frontend": "cd frontend && npm run dev"
