@@ -3,6 +3,8 @@
  * Logic & Stabilization Patch
  */
 
+const API_URL = "https://return-guard-ai.onrender.com";
+
 let initialized = false;
 document.addEventListener('DOMContentLoaded', () => {
     if (initialized) return;
