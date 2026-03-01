@@ -3,8 +3,12 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+<<<<<<< HEAD
     "build": "npm run vercel-build",
     "vercel-build": "npm install && cd frontend && npm install && npm run build && cd ../frontend/backend && npm install && npx prisma generate",
+=======
+    "build": "cd frontend && npm install && npm run build",
+>>>>>>> 83467a09f7a672ed705a6baa764569f1e87be178
     "preview": "cd frontend && npm run preview",
     "backend": "cd frontend/backend && npm run dev",
     "frontend": "cd frontend && npm run dev"

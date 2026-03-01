@@ -1,4 +1,5 @@
 {
+<<<<<<< HEAD
     "version": 2,
     "rewrites": [
         {
@@ -23,4 +24,7 @@
             }
         }
     ]
+=======
+    "outputDirectory": "frontend/dist"
+>>>>>>> 83467a09f7a672ed705a6baa764569f1e87be178
 }
