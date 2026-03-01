@@ -1,151 +1,62 @@
 /**
- * Computes behavioral statistics for a user based on their transaction history.
- * @param {Array} userTx - List of all transactions for a user, sorted by date.
- * @param {number} currentIndex - The index of the transaction being analyzed.
- * @returns {Object} - Computed user statistics.
+ * Computes behavioral statistics for a user based on history.
  */
 const computeUserStats = (userTx, currentIndex) => {
     const currentTx = userTx[currentIndex];
     const previousTx = userTx.slice(0, currentIndex);
     const currentTime = new Date(currentTx.purchase_date).getTime();
 
-    // 1. Average Amount (Past transactions only)
-    const avgAmount = previousTx.length > 0
-        ? previousTx.reduce((sum, t) => sum + Number(t.item_price || 0), 0) / previousTx.length
-        : Number(currentTx.item_price || 0);
-
-    // 2. Transactions in last 1 hour
-    const oneHourMs = 60 * 60 * 1000;
-    const txLast1hr = previousTx.filter(t =>
-        (currentTime - new Date(t.purchase_date).getTime()) <= oneHourMs
-    ).length;
-
-    // 3. Transactions in last 24 hours
-    const twentyFourHoursMs = 24 * 60 * 60 * 1000;
-    const txLast24hr = previousTx.filter(t =>
-        (currentTime - new Date(t.purchase_date).getTime()) <= twentyFourHoursMs
-    ).length;
-
-    // 4. Last Country (Relative to current transaction)
-    const lastCountry = previousTx.length > 0
-        ? (previousTx[previousTx.length - 1].country || "UNKNOWN")
-        : (currentTx.country || "UNKNOWN");
-
-    // 5. Refunds in last 7 days
+    // Refunds in last 7 days (Rule: >3 returns in 7 days)
     const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
     const refundsLast7days = previousTx.filter(t => {
         const refundTime = t.return_date ? new Date(t.return_date).getTime() : 0;
-        return refundTime > 0 && (currentTime - refundTime) <= sevenDaysMs && (currentTime - refundTime) >= 0;
+        return refundTime > 0 && (currentTime - refundTime) <= sevenDaysMs;
     }).length;
 
     return {
-        avg_amount: avgAmount,
-        tx_last_1hr: txLast1hr,
-        tx_last_24hr: txLast24hr,
-        last_country: lastCountry,
         refunds_last_7days: refundsLast7days
     };
 };
 
 /**
- * Calculates a risk score for a single transaction based on computed stats.
- * @param {Object} tx - The transaction being analyzed.
- * @param {Object} userStats - Dynamically computed user behavioral stats.
- * @param {Array} blacklist - List of blacklisted identifiers.
- * @returns {number} - Calculated risk score (0-100).
+ * Calculates a deterministic risk score based on specific fraud rules.
  */
-const calculateRisk = (tx, userStats, blacklist = []) => {
+const calculateRisk = (tx, userStats, productStats = {}) => {
     let score = 0;
-    const txAmount = Number(tx.item_price || 0);
 
-    // 1. Amount Anomaly
-    if (userStats.avg_amount > 0 && txAmount > 3 * userStats.avg_amount && txAmount > 50) {
-        score += 30;
-    } else if (txAmount > 5000) {
-        score += 25;
+    // RULE 1: Return within 1 day (+40)
+    if (tx.purchase_date && tx.return_date) {
+        const diff = (new Date(tx.return_date) - new Date(tx.purchase_date)) / (1000 * 3600 * 24);
+        if (diff <= 1 && diff >= 0) score += 40;
     }
 
-    // 2. High Frequency (1hr)
-    if (userStats.tx_last_1hr > 5) {
+    // RULE 2: > 3 returns in 7 days (+30)
+    if (userStats.refunds_last_7days > 3) score += 30;
+
+    // RULE 3: Product returned by multiple users (+20)
+    const productId = tx.item_id || tx.product_id;
+    if (productId && productStats[productId] && productStats[productId] > 1) {
         score += 20;
     }
 
-    // 3. Sustained Activity (24hr)
-    if (userStats.tx_last_24hr > 15) {
-        score += 15;
-    }
+    // RULE 4: Reason keywords (+15)
+    const keywords = ["damaged", "not received", "wrong item"];
+    const reason = String(tx.return_reason || "").toLowerCase();
+    if (keywords.some(k => reason.includes(k))) score += 15;
 
-    // 4. Blacklist Check
-    const userId = String(tx.user_id || "").toLowerCase();
-    const receiptId = String(tx.receipt_id || "").toLowerCase();
-    const isBlacklisted = userId.includes('fraud') ||
-        userId.includes('bot') ||
-        receiptId.includes('flag') ||
-        blacklist.some(b => userId === b.toLowerCase());
+    // RULE 5: Missing Required Fields (+10)
+    const required = ['user_id', 'order_id', 'item_id', 'purchase_date'];
+    if (required.some(f => !tx[f] || tx[f] === "UNKNOWN")) score += 10;
 
-    if (isBlacklisted) {
-        score += 40;
-    }
+    // FINAL CLAMP
+    score = Math.min(score, 100);
 
-    // 5. Refund Abuse
-    if (userStats.refunds_last_7days > 3) {
-        score += 25;
-    }
+    // CLASSIFICATION
+    let level = "Low";
+    if (score >= 60) level = "High";
+    else if (score >= 30) level = "Medium";
 
-    // 6. Location Anomaly (Simple trigger)
-    if (tx.country && userStats.last_country !== "UNKNOWN" && tx.country !== userStats.last_country) {
-        score += 20;
-    }
-
-    return Math.min(score, 100);
+    return { score, level };
 };
 
-/**
- * Legacy wrapper for Prisma-based lookups (keeps existing integrations working)
- */
-const calculateRiskScore = async (prisma, userId, orderId = null) => {
-    const transactions = await prisma.transaction.findMany({
-        where: { user_id: userId },
-        orderBy: { purchase_date: 'asc' }
-    });
-
-    if (!transactions || transactions.length === 0) return null;
-
-    const targetIndex = orderId
-        ? transactions.findIndex(t => t.order_id === orderId)
-        : transactions.length - 1;
-
-    if (targetIndex === -1) return null;
-
-    const tx = transactions[targetIndex];
-    const userStats = computeUserStats(transactions, targetIndex);
-    const risk_score = calculateRisk(tx, userStats);
-
-    let level = "Normal";
-    if (risk_score >= 71) level = "Extreme";
-    else if (risk_score >= 31) level = "Moderate";
-
-    const data = {
-        user_id: userId,
-        order_id: tx.order_id,
-        score: risk_score,
-        level: level,
-        status: "Pending",
-        explanation: risk_score >= 71 ? "Dynamic Batch: High risk detected" : (risk_score >= 31 ? "Moderate risk detected" : "Analyzed")
-    };
-
-    const existingScore = await prisma.riskScore.findFirst({
-        where: { order_id: tx.order_id }
-    });
-
-    if (existingScore) {
-        return await prisma.riskScore.update({
-            where: { id: existingScore.id },
-            data
-        });
-    }
-
-    return await prisma.riskScore.create({ data });
-};
-
-module.exports = { calculateRisk, computeUserStats, calculateRiskScore };
+module.exports = { calculateRisk, computeUserStats };
