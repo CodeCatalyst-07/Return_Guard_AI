@@ -16,7 +16,7 @@ app.use('/api', routes);
 
 // Static Client Serving (for local/monolithic mode)
 // Vite build output goes to frontend/dist/
-const distPath = path.join(__dirname, '../../dist');
+const distPath = path.join(__dirname, '../../frontend/dist');
 app.use(express.static(distPath));
 
 // Root heartbeat for deployment verification
