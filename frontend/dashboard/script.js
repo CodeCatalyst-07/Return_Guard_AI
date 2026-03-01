@@ -492,15 +492,17 @@ async function fetchData(preserveResult = false) {
         // Only recompute from DB data on initial load (not after an upload)
         if (!preserveResult) {
             const highItems = state.returns.filter(r => r.riskScore >= 60);
+            const medItems = state.returns.filter(r => r.riskScore >= 30 && r.riskScore < 60);
+            const avgScore = state.returns.length
+                ? state.returns.reduce((s, r) => s + r.riskScore, 0) / state.returns.length
+                : 0;
             state.currentAnalysisResult = {
                 total_records: state.transactions.length,
                 threats_detected: highItems.length,
-                high_risk_count: state.returns.filter(r => ['high', 'extreme'].includes(r.level)).length,
-                medium_risk_count: state.returns.filter(r => ['moderate', 'medium'].includes(r.level)).length,
-                low_risk_count: state.returns.filter(r => ['low', 'normal'].includes(r.level)).length,
-                average_risk_score: state.returns.length
-                    ? state.returns.reduce((s, r) => s + r.riskScore, 0) / state.returns.length
-                    : 0
+                high_risk_count: highItems.length,
+                medium_risk_count: medItems.length,
+                low_risk_count: state.returns.length - highItems.length - medItems.length,
+                average_risk_score: avgScore
             };
         }
 
@@ -525,20 +527,19 @@ async function safeFetch(url) {
 ========================= */
 
 function syncUI() {
-    const data = state.currentAnalysisResult || {};
+    const data = state.currentAnalysisResult;
 
-    // Always derive KPIs straight from state.returns (source of truth from API)
-    const totalReturns = state.transactions.length || data.total_records || 0;
-    const highRisk = state.returns.filter(r => ['high', 'extreme'].includes(r.level)).length;
-    const flagged = state.returns.filter(r => r.riskScore >= 60).length;
-    const avgRisk = state.returns.length
-        ? state.returns.reduce((s, r) => s + r.riskScore, 0) / state.returns.length
-        : 0;
+    // Use state.currentAnalysisResult as the single source of truth for KPIs.
+    // It's set from the upload result after an upload, or computed from DB on load.
+    const totalReturns = data?.total_records ?? state.transactions.length;
+    const highRisk = data?.high_risk_count ?? 0;
+    const flagged = data?.threats_detected ?? 0;
+    const avgRisk = data?.average_risk_score ?? 0;
 
-    animateNumber('kpi-total-returns', state.kpis.total, totalReturns, 1000);
-    animateNumber('kpi-high-risk', state.kpis.threats, highRisk, 1000);
-    animateNumber('kpi-fraud-prob', state.kpis.avgRisk, avgRisk, 1000, '%');
-    animateNumber('kpi-flagged-users', state.kpis.flagged, flagged, 1000);
+    animateNumber('kpi-total-returns', state.kpis.total, totalReturns, 800);
+    animateNumber('kpi-high-risk', state.kpis.threats, highRisk, 800);
+    animateNumber('kpi-fraud-prob', state.kpis.avgRisk, avgRisk, 800, '%');
+    animateNumber('kpi-flagged-users', state.kpis.flagged, flagged, 800);
 
     state.kpis = { total: totalReturns, threats: highRisk, avgRisk, flagged };
 
